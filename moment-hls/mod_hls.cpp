@@ -1578,7 +1578,7 @@ HlsServer::StreamSession::finishSegment (PagePool::Page ** const first_new_page,
                 page_pool->msgRef (forming_segment->page_list.first);
                 seg_session->conn_sender->sendPages (page_pool,
                                                      forming_segment->page_list.first,
-                                                     0 /* msg_offset */,
+                                                     0    /* msg_offset */,
                                                      true /* do_flush */);
             }
 
@@ -1826,7 +1826,8 @@ HlsServer::StreamSession::newFrameAdded_unlocked (HlsFrame * const mt_nonnull fr
         SegmentSessionList::iter iter (forming_seg_sessions);
         while (!forming_seg_sessions.iter_done (iter)) {
             SegmentSession * const seg_session = forming_seg_sessions.iter_next (iter);
-            logD (hls_msg, _this_func, "new_page_offs: ", new_page_offs, ", first_new_page->data_len: ", first_new_page->data_len);
+            logD (hls_msg, _this_func, "new_page_offs: ", new_page_offs, ", "
+                  "first_new_page->data_len: ", first_new_page->data_len);
 
             {
               // Copying the pages because forming_segment->page_list is not finalized yet,
@@ -1834,7 +1835,10 @@ HlsServer::StreamSession::newFrameAdded_unlocked (HlsFrame * const mt_nonnull fr
                 PagePool::PageListHead page_list;
                 Size const msg_len = PagePool::countPageListDataLen (first_new_page, new_page_offs);
                 page_pool->getFillPagesFromPages (&page_list, first_new_page, new_page_offs, msg_len);
-                seg_session->conn_sender->sendPages (page_pool, page_list.first, 0 /* msg_offset */, true /* do_flush */);
+                seg_session->conn_sender->sendPages (page_pool,
+                                                     page_list.first,
+                                                     0    /* msg_offset */,
+                                                     true /* do_flush */);
             }
         }
     }
@@ -1909,7 +1913,7 @@ HlsServer::StreamSession::addSegmentSession (SegmentSession * const mt_nonnull s
                 MOMENT_HLS__OK_HEADERS (mpegts_mime_type, segment->seg_len),
                 "\r\n");
         page_pool->msgRef (segment->page_list.first);
-        seg_session->conn_sender->sendPages (page_pool, &segment->page_list, true /* do_flush */);
+        seg_session->conn_sender->sendPages (page_pool, segment->page_list.first, true /* do_flush */);
 
         if (!seg_session->conn_keepalive)
             seg_session->conn_sender->closeAfterFlush ();
@@ -1953,7 +1957,7 @@ HlsServer::StreamSession::addSegmentSession (SegmentSession * const mt_nonnull s
                                           forming_segment->page_list.first,
                                           0 /* from_offset */,
                                           forming_segment->seg_len);
-        seg_session->conn_sender->sendPages (page_pool, &page_list, true /* do_flush */);
+        seg_session->conn_sender->sendPages (page_pool, page_list.first, true /* do_flush */);
     }
 
     seg_session->in_forming_list = true;
@@ -2289,7 +2293,7 @@ HlsServer::processStreamHttpRequest (HttpRequest * const mt_nonnull req,
             false /* do_flush */,
             MOMENT_HLS__OK_HEADERS (m3u8_mime_type, data_len),
             "\r\n");
-    conn_sender->sendPages (page_pool, &page_list, true /* do_flush */);
+    conn_sender->sendPages (page_pool, page_list.first, true /* do_flush */);
 
     if (!req->getKeepalive())
         conn_sender->closeAfterFlush ();
@@ -2433,7 +2437,7 @@ HlsServer::doProcessSegmentListHttpRequest (HttpRequest   * const req,
             false /* do_flush */,
             MOMENT_HLS__OK_HEADERS (m3u8_mime_type, data_len),
             "\r\n");
-    conn_sender->sendPages (page_pool, &page_list, true /* do_flush */);
+    conn_sender->sendPages (page_pool, page_list.first, true /* do_flush */);
 
     if (!req->getKeepalive())
         conn_sender->closeAfterFlush ();
