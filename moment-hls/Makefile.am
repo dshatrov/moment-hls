@@ -7,8 +7,7 @@ COMMON_CFLAGS =			\
 if PLATFORM_WIN32
     COMMON_CFLAGS += -DPLATFORM_WIN32
 else
-    # For backtraces
-    COMMON_CFLAGS += -rdynamic -pthread
+    COMMON_CFLAGS += -pthread # -rdynamic
 endif
 
 if MOMENT_HLS_DEMO
