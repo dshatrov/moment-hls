@@ -65,8 +65,8 @@
 using namespace M;
 using namespace Moment;
 
-static LogGroup libMary_logGroup_hls        ("mod_hls",        LogLevel::D);
-static LogGroup libMary_logGroup_hls_seg    ("mod_hls.seg",    LogLevel::D);
+static LogGroup libMary_logGroup_hls        ("mod_hls",        LogLevel::I);
+static LogGroup libMary_logGroup_hls_seg    ("mod_hls.seg",    LogLevel::I);
 static LogGroup libMary_logGroup_hls_msg    ("mod_hls.msg",    LogLevel::I);
 static LogGroup libMary_logGroup_hls_timers ("mod_hls.timers", LogLevel::I);
 
@@ -129,8 +129,7 @@ private:
         HlsSegment ()
             : excluded (false),
               excluded_time (0)
-        {
-        }
+        {}
 
         ~HlsSegment ()
         {
@@ -164,12 +163,11 @@ private:
 
         SegmentSession ()
             : conn_sender (this /* coderef_container */)
-        {
-        }
+        {}
 
         ~SegmentSession ()
         {
-          logD (hls_seg, _this_func_);
+            logD (hls_seg, _this_func_);
         }
     };
 
@@ -315,8 +313,7 @@ private:
               got_first_pts        (false),
               first_pts            (0),
               last_pts             (0)
-        {
-        }
+        {}
 
         ~StreamSession ()
         {
