@@ -21,6 +21,7 @@
 #include <moment/libmoment.h>
 
 #include "tsmux/tsmux.h"
+#include <moment-hls/inc.h>
 
 
 // Unnecessary list of frames which is kept around for possible future optimizations.
@@ -65,8 +66,8 @@
 using namespace M;
 using namespace Moment;
 
-static LogGroup libMary_logGroup_hls        ("mod_hls",        LogLevel::I);
-static LogGroup libMary_logGroup_hls_seg    ("mod_hls.seg",    LogLevel::I);
+static LogGroup libMary_logGroup_hls        ("mod_hls",        LogLevel::D);
+static LogGroup libMary_logGroup_hls_seg    ("mod_hls.seg",    LogLevel::D);
 static LogGroup libMary_logGroup_hls_msg    ("mod_hls.msg",    LogLevel::I);
 static LogGroup libMary_logGroup_hls_timers ("mod_hls.timers", LogLevel::I);
 
@@ -217,6 +218,8 @@ private:
     public:
         StateMutex mutex;
 
+        mt_const WeakRef<HlsServer> weak_hls_server;
+
         mt_const StreamOptions opts;
 
         mt_mutex (HlsServer::mutex) bool in_release_queue;
@@ -355,6 +358,7 @@ private:
         mt_const bool no_audio;
         mt_const bool no_video;
 
+        // Used for MOMENT_HLS__FRAME_LIST only.
         mt_const Uint64 frame_window_nanosec;
 
         mt_const GenericStringHash::EntryKey hash_key;
@@ -378,8 +382,7 @@ private:
 
             AacCodecData (Object * const coderef_container)
                 : page_pool (coderef_container)
-            {
-            }
+            {}
         };
 
         mt_mutex (mutex) AacCodecData aac_codec_data;
@@ -412,8 +415,7 @@ private:
               ,
               frame_list_size (0)
 #endif
-        {
-        }
+        {}
 
         ~HlsStream ()
         {
@@ -460,6 +462,8 @@ private:
     mt_const Timers::TimerKey segments_cleanup_timer;
     mt_const Timers::TimerKey stream_session_cleanup_timer;
     mt_const Timers::TimerKey watched_streams_timer;
+
+    MOMENT_HLS__DATA
 
 #ifdef MOMENT_HLS_DEMO
     mt_mutex (mutex) bool send_delimiters;
@@ -627,6 +631,7 @@ HlsServer::StreamSession::trimSegmentList (Time const cur_time)
                    (opts.segment_duration_millisec / 1000 + 1) *
                            (opts.num_real_segments + opts.num_lead_segments + 1))
         {
+            logD (hls_seg, _this_func, "removing segment ", oldest_seg_no);
             segment_list.remove (segment);
             page_pool->msgUnref (segment->page_list.first);
             segment->unref ();
@@ -1093,10 +1098,7 @@ HlsServer::audioMessage (VideoStream::AudioMessage * const mt_nonnull msg,
         unref_normalized_pages = false;
     } else {
         unref_normalized_pages = true;
-        RtmpConnection::normalizePrechunkedData (msg->page_pool,
-                                                 &msg->page_list,
-                                                 msg->msg_offset,
-                                                 msg->prechunk_size,
+        RtmpConnection::normalizePrechunkedData (msg,
                                                  msg->page_pool,
                                                  &normalized_page_pool,
                                                  &normalized_pages,
@@ -1198,10 +1200,7 @@ HlsServer::videoMessage (VideoStream::VideoMessage * const mt_nonnull msg,
         unref_normalized_pages = false;
     } else {
         unref_normalized_pages = true;
-        RtmpConnection::normalizePrechunkedData (msg->page_pool,
-                                                 &msg->page_list,
-                                                 msg->msg_offset,
-                                                 msg->prechunk_size,
+        RtmpConnection::normalizePrechunkedData (msg,
                                                  msg->page_pool,
                                                  &normalized_page_pool,
                                                  &normalized_pages,
@@ -1465,8 +1464,6 @@ HlsServer::videoStreamAdded (VideoStream * const mt_nonnull video_stream,
         }
     }
 
-#warning mod_auth lags can lead to stuck stream sessions in mod_hls (stuck video streams) - vichatter bug
-
     Ref<HlsStream> const hls_stream = grab (new HlsStream);
     logD (hls, _func, "new HlsStream: 0x", fmt_hex, (UintPtr) hls_stream.ptr());
 
@@ -1593,6 +1590,7 @@ HlsServer::StreamSession::finishSegment (PagePool::Page ** const first_new_page,
         assert (forming_seg_sessions.isEmpty());
     }
 
+    logD (hls_seg, _this_func, "appending segment ", forming_seg_no);
     segment_list.append (forming_segment);
     forming_segment->ref ();
     ++num_active_segments;
@@ -2026,10 +2024,13 @@ HlsServer::createStreamSession (ConstMemory const stream_name)
     return stream_session;
 }
 
+MOMENT_HLS__INC
+
 mt_mutex (mutex) Ref<HlsServer::StreamSession>
 HlsServer::doCreateStreamSession (HlsStream * const hls_stream)
 {
     Ref<StreamSession> const stream_session = grab (new StreamSession (&default_opts));
+    stream_session->weak_hls_server = this;
     stream_session->valid = true;
     stream_session->started = false;
     stream_session->last_request_time_millisec = getTimeMilliseconds();
@@ -2088,8 +2089,9 @@ HlsServer::doCreateStreamSession (HlsStream * const hls_stream)
     if (!stream_session->opts.one_session_per_stream)
         stream_session_cleanup_list.append (stream_session);
 
-    stream_session->ref ();
+    MOMENT_HLS__INIT
 
+    stream_session->ref ();
     return stream_session;
 }
 
@@ -2156,6 +2158,7 @@ HlsServer::destroyStreamSession (StreamSession * const mt_nonnull stream_session
     }
 
     stream_session->valid = false;
+    stream_session->hls_stream->bound_stream_session = NULL;
 
     if (stream_session->started) {
         stream_session->hls_stream->started_stream_sessions.remove (stream_session);
@@ -2871,7 +2874,7 @@ static void momentHlsInit ()
         logI_ (_func, opt_name, ": ", insert_au_delimiters);
     }
 
-    bool send_codec_data = false;
+    bool send_codec_data = true;
     {
         ConstMemory const opt_name = "mod_hls/send_codec_data";
         MConfig::BooleanValue const val = config->getBoolean (opt_name);
@@ -2880,8 +2883,8 @@ static void momentHlsInit ()
             return;
         }
 
-        if (val == MConfig::Boolean_True)
-            send_codec_data = true;
+        if (val == MConfig::Boolean_False)
+            send_codec_data = false;
 
         logI_ (_func, opt_name, ": ", send_codec_data);
     }

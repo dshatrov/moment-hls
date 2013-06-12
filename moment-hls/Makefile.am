@@ -20,15 +20,17 @@ AM_CXXFLAGS += $(COMMON_CFLAGS)
 INCLUDES = -I$(top_srcdir)
 
 moment_hls_private_headers =
-
 moment_hls_target_headers =
+moment_hls_target_sources =
+include Makefile.inc.am
 
 moment_hlsdir = $(libdir)/moment-1.0
 moment_hls_LTLIBRARIES = libmoment-hls-1.0.la
 libmoment_hls_1_0_la_SOURCES =	\
         mod_hls.cpp             \
         tsmux/tsmux.c           \
-        tsmux/tsmuxstream.c
+        tsmux/tsmuxstream.c     \
+        $(moment_hls_target_sources)
 
 moment_hls_extra_dist =
 
